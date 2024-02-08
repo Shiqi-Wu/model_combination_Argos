@@ -84,6 +84,7 @@ class ParaKoopmanLayer(nn.Module):
             K = self.activation(layer(K))
         K = self.output_layer(K)
         return torch.reshape(K, (-1, self.K_dim, self.K_dim))
+    
 class ModelKoopman(nn.Module):
     def __init__(self, model_psi, k_layer):
         super(ModelKoopman, self).__init__()
@@ -184,30 +185,40 @@ def Build_model(n_input, layer_sizes_dic, layer_sizes_k, n_psi_train, u_dim = 0,
     
     return model_psi, model_koopman, model_inv_psi, model_predict, model_auto
 
+
 class NonlinearMiddleLayer(nn.Module):
     """
-    Nonlinear Middle Layer
+    Nonlinear Middle Layer with modifications to reduce overfitting
     """
 
-    def __init__(self, layer_sizes=[64, 64, 64], n_psi_train=128, u_dim = 2):
+    def __init__(self, layer_sizes=[64, 64, 64], n_psi_train=128, u_dim=2, dropout_rate=0.5):
         super(NonlinearMiddleLayer, self).__init__()
         self.layer_sizes = layer_sizes
 
         # Input and hidden layers
         self.input_layer = nn.Linear(n_psi_train + u_dim, self.layer_sizes[0], bias=False)
-        self.hidden_layers = nn.ModuleList([nn.Linear(layer_sizes[i - 1], layer_sizes[i]) for i in range(1, len(layer_sizes))])
+        self.hidden_layers = nn.ModuleList()
+        for i in range(1, len(layer_sizes)):
+            self.hidden_layers.append(nn.Linear(layer_sizes[i - 1], layer_sizes[i]))
+            self.hidden_layers.append(nn.BatchNorm1d(layer_sizes[i]))
+            self.hidden_layers.append(nn.Dropout(dropout_rate))
+
         self.output_layer = nn.Linear(layer_sizes[-1], n_psi_train)
 
         # Activation function
-        self.activation = nn.Tanh()
+        self.activation = nn.LeakyReLU()
 
     def forward(self, x, u):
         y = torch.cat((x, u), dim=1)
         y = self.input_layer(y)
         for layer in self.hidden_layers:
-            y = self.activation(layer(y))
+            if isinstance(layer, nn.Linear):
+                y = self.activation(layer(y))
+            else:
+                y = layer(y)
         y = self.output_layer(y)
         return y
+
     
 class NonlinearCorrection(nn.Module):
     def __init__(self, model_psi, model_inv_psi, middlelayer):
@@ -238,4 +249,7 @@ def BuildNonlinearModel(n_input, layer_sizes_dic, layer_sizes_m, n_psi_train, u_
     # Model
     model_correction = NonlinearCorrection(model_psi, model_inv_psi, middlelayer)
 
-    return model_correction
+    # Autoencoder
+    model_autoencoder = ModelAutoencoder(model_psi, model_inv_psi)
+
+    return model_psi, model_inv_psi, model_autoencoder, model_correction
