@@ -158,18 +158,27 @@ def data_preparation_v2(predict_num):
     u1_data_scaled = scaler_u.transform(u1_data)
     u2_data_scaled = scaler_u.transform(u2_data)
 
+    x_data_slices = []
+    y_data_slices = []
+    u1_data_slices = []
+    u2_data_slices = []
+
     for i in range(0, x_data_scaled.shape[0], window_size):
         for j in range(window_size - predict_num + 1):
-            x_slice = x_data[i+j:i+j+predict_num].reshape((1, 1, -1))
-            y_slice = y_data[i+j:i+j+predict_num].reshape((1, 1, -1))
-            u1_slice = u1_data[i+j:i+j+predict_num].reshape((1, 1, -1))
-            u2_slice = u2_data[i+j:i+j+predict_num].reshape((1, 1, -1))
+            x_slice = x_data[i+j:i+j+predict_num,:].reshape((1, predict_num, -1))
+            y_slice = y_data[i+j:i+j+predict_num,:].reshape((1, predict_num, -1))
+            u1_slice = u1_data[i+j:i+j+predict_num,:].reshape((1, predict_num, -1))
+            u2_slice = u2_data[i+j:i+j+predict_num,:].reshape((1, predict_num, -1))
 
-    x_data_slices.append(x_slice)
-    y_data_slices.append(y_slice)
-    u1_data_slices.append(u1_slice)
-    u2_data_slices.append(u2_slice)
+            x_data_slices.append(x_slice)
+            y_data_slices.append(y_slice)
+            u1_data_slices.append(u1_slice)
+            u2_data_slices.append(u2_slice)
 
+    x_data_scaled = np.concatenate(x_data_slices, axis = 0)
+    y_data_scaled = np.concatenate(y_data_slices, axis = 0)
+    u1_data_scaled = np.concatenate(u1_data_slices, axis = 0)
+    u2_data_scaled = np.concatenate(u2_data_slices, axis = 0)
 
     shuffled_indices = np.arange(len(x_data))
     np.random.shuffle(shuffled_indices)
@@ -270,5 +279,29 @@ def main():
     np.save('test_losses.npy', test_losses)
     return
 
+def main_v2(predict_num = 10):
+    train_dataset, test_dataset, n_features, n_inputs = data_preparation_v2(predict_num)
+    params = Params(n_features, n_inputs)
+    model = build_model(params)
+    model = torch.load('model.pth')
+    optim = Adam(model.parameters(), lr=0.001)
+    loss_fn = nn.MSELoss()
+    train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=128, shuffle=False)
+    scheduler = StepLR(optim, step_size=100, gamma=0.8)
+    n_epochs = 3000
+    train_losses = list(np.load('train_losses.npy'))
+    test_losses = list(np.load('test_losses.npy'))
+    for epoch in range(n_epochs):
+        train_loss = train_one_epoch(model, optim, loss_fn, train_loader, epoch)
+        test_loss = test_one_epoch(model, loss_fn, test_loader, epoch)
+        train_losses.append(train_loss)
+        test_losses.append(test_loss)
+        scheduler.step()
+        torch.save(model, 'model_v2_10.pth')
+    np.save('train_losses_v2_10.npy', train_losses)
+    np.save('test_losses_v2_10.npy', test_losses)
+    return
+
 if __name__ == "__main__":
-   main()
+   main_v2()
