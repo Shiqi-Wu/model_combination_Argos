@@ -180,18 +180,13 @@ def data_preparation_v2(predict_num):
     u1_data_scaled = np.concatenate(u1_data_slices, axis = 0)
     u2_data_scaled = np.concatenate(u2_data_slices, axis = 0)
 
-    shuffled_indices = np.arange(len(x_data))
+    shuffled_indices = np.arange(len(x_data_scaled))
     np.random.shuffle(shuffled_indices)
 
     x_data_scaled = x_data_scaled[shuffled_indices]
     y_data_scaled = y_data_scaled[shuffled_indices]
     u1_data_scaled = u1_data_scaled[shuffled_indices]
     u2_data_scaled = u2_data_scaled[shuffled_indices]
-
-    x_data_scaled = np.reshape(x_data_scaled, (n_samples, 1, n_features))
-    y_data_scaled = np.reshape(y_data_scaled, (n_samples, 1, n_features))
-    u1_data_scaled = np.reshape(u1_data_scaled, (n_samples, 1, n_inputs))
-    u2_data_scaled = np.reshape(u2_data_scaled, (n_samples, 1, n_inputs))
 
     x_train, x_test = train_test_split(x_data_scaled, test_size=0.2, random_state=42)
     y_train, y_test = train_test_split(y_data_scaled, test_size=0.2, random_state=42)
