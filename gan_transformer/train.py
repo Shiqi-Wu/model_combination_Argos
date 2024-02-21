@@ -14,8 +14,6 @@ from torch.optim.lr_scheduler import StepLR
 import gan_transformer as transformer
 from load_dataset import *
 
-scaler_x = StandardScaler()
-scaler_u = StandardScaler()
 
 class Params:
     def __init__(self, n_features, n_inputs, h=8, d_model=128, d_ff=2048, 
@@ -52,10 +50,10 @@ def train_one_epoch(model, optim, loss_fn, train_loader, epoch):
         optim.step()
         train_loss += loss.item()
         
-        if batch_idx % 100 == 0:  # 每100个batch输出一次信息
-            print(f"Batch [{batch_idx}/{len(train_loader)}], Loss: {loss.item():.4f}")
+        if batch_idx % 100 == 0:
+            print(f"Batch [{batch_idx}/{len(train_loader)}], Loss: {loss.item():.4e}")
     
-    print(f"Epoch {epoch + 1}, Training Loss: {train_loss / len(train_loader):.4f}")
+    print(f"Epoch {epoch + 1}, Training Loss: {train_loss / len(train_loader):.4e}")
     return train_loss / len(train_loader)
 
 def test_one_epoch(model, loss_fn, test_loader, epoch):
@@ -69,7 +67,7 @@ def test_one_epoch(model, loss_fn, test_loader, epoch):
             test_loss += loss.item()
 
     
-    print(f"Epoch {epoch + 1}, Testing Loss: {test_loss / len(test_loader):.4f}")
+    print(f"Epoch {epoch + 1}, Testing Loss: {test_loss / len(test_loader):.4e}")
     return test_loss / len(test_loader)
 
 def main():
@@ -106,7 +104,7 @@ def main_v2(predict_num = 10):
     train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=128, shuffle=False)
     scheduler = StepLR(optim, step_size=100, gamma=0.8)
-    n_epochs = 3000
+    n_epochs = 2500
     train_losses = list(np.load('train_losses.npy'))
     test_losses = list(np.load('test_losses.npy'))
     for epoch in range(n_epochs):
