@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader, TensorDataset
 scaler_x = StandardScaler()
 scaler_u = StandardScaler()
 
-def load_dataset(data_dict):
+def load_dataset(data_dict, predict_num = 1):
     time = []
     data = []
     I_p = []
@@ -18,12 +18,12 @@ def load_dataset(data_dict):
         I_p.append(contents['I_p'])
     
     data = np.array(data)
-    x_data = data[:-1,:]
-    y_data = data[1:,:]
-    dt_data = (time[1] - time[0]) * np.ones((data.shape[0] -1 , 1))
+    x_data = data[:-predict_num,:]
+    y_data = data[predict_num:,:]
+    dt_data = (time[1] - time[0]) * np.ones((data.shape[0] -predict_num, 1))
     # I_p = np.reshape(np.array(I_p)[:-1], (-1,1))
-    u1_data = np.concatenate((dt_data, np.reshape(np.array(I_p)[:-1], (-1,1)), np.reshape(np.array(I_p)[1:], (-1,1))), axis = 1)
-    u2_data = np.concatenate((dt_data, np.reshape(np.array(I_p)[1:], (-1,1)), np.reshape(np.concatenate((np.array(I_p)[2:], np.array([I_p[0]]))), (-1,1))), axis = 1)
+    u1_data = np.concatenate((dt_data, np.reshape(np.array(I_p)[:-predict_num], (-1,1)), np.reshape(np.array(I_p)[1:data.shape[0]-predict_num+1], (-1,1))), axis = 1)
+    u2_data = np.concatenate((dt_data, np.reshape(np.array(I_p)[predict_num:], (-1,1)), np.reshape(np.concatenate((np.array(I_p)[predict_num+1:], np.array([I_p[0]]))), (-1,1))), axis = 1)
     return x_data, y_data, u1_data, u2_data
 
 def data_preparation():
@@ -99,7 +99,7 @@ def data_preparation():
 
     return train_dataset, test_dataset, n_features, n_inputs
 
-def data_preparation_v1():
+def data_preparation_v1(predict_num = 1):
     # Data preparation
     x_dataset = []
     y_dataset = []
@@ -113,7 +113,7 @@ def data_preparation_v1():
         # Check if the file exists before trying to load it
         if os.path.exists(data_file_path):
             data_dict = np.load(data_file_path, allow_pickle=True).item()
-            x_data, y_data, u1_data, u2_data = load_dataset(data_dict)
+            x_data, y_data, u1_data, u2_data = load_dataset(data_dict, predict_num)
             x_dataset.append(x_data)
             y_dataset.append(y_data)
             u1_dataset.append(u1_data)
@@ -196,7 +196,6 @@ def data_preparation_v2(predict_num):
             data_dict = np.load(data_file_path, allow_pickle=True).item()
             x_data, y_data, u1_data, u2_data = load_dataset(data_dict)
             x_dataset.append(x_data[:window_size])
-            y_dataset.append(y_data[:window_size])
             u1_dataset.append(u1_data[:window_size])
             u2_dataset.append(u2_data[:window_size])
         else:
@@ -232,12 +231,12 @@ def data_preparation_v2(predict_num):
     u1_data_slices = []
     u2_data_slices = []
 
-    for i in range(0, x_data_scaled.shape[0], window_size):
+    for i in range(0, window_size, x_data_scaled.shape[0]):
         for j in range(window_size - predict_num + 1):
-            x_slice = x_data[i+j:i+j+predict_num,:].reshape((1, predict_num, -1))
-            y_slice = y_data[i+j:i+j+predict_num,:].reshape((1, predict_num, -1))
-            u1_slice = u1_data[i+j:i+j+predict_num,:].reshape((1, predict_num, -1))
-            u2_slice = u2_data[i+j:i+j+predict_num,:].reshape((1, predict_num, -1))
+            x_slice = x_data_scaled[i+j:i+j+predict_num,:].reshape((1, predict_num, -1))
+            y_slice = y_data_scaled[i+j:i+j+predict_num,:].reshape((1, predict_num, -1))
+            u1_slice = u1_data_scaled[i+j:i+j+predict_num,:].reshape((1, predict_num, -1))
+            u2_slice = u2_data_scaled[i+j:i+j+predict_num,:].reshape((1, predict_num, -1))
 
             x_data_slices.append(x_slice)
             y_data_slices.append(y_slice)
@@ -249,13 +248,13 @@ def data_preparation_v2(predict_num):
     u1_data_scaled = np.concatenate(u1_data_slices, axis = 0)
     u2_data_scaled = np.concatenate(u2_data_slices, axis = 0)
 
-    shuffled_indices = np.arange(len(x_data_scaled))
-    np.random.shuffle(shuffled_indices)
+    # shuffled_indices = np.arange(len(x_data_scaled))
+    # np.random.shuffle(shuffled_indices)
 
-    x_data_scaled = x_data_scaled[shuffled_indices]
-    y_data_scaled = y_data_scaled[shuffled_indices]
-    u1_data_scaled = u1_data_scaled[shuffled_indices]
-    u2_data_scaled = u2_data_scaled[shuffled_indices]
+    # x_data_scaled = x_data_scaled[shuffled_indices]
+    # y_data_scaled = y_data_scaled[shuffled_indices]
+    # u1_data_scaled = u1_data_scaled[shuffled_indices]
+    # u2_data_scaled = u2_data_scaled[shuffled_indices]
 
     x_train, x_test = train_test_split(x_data_scaled, test_size=0.2, random_state=42)
     y_train, y_test = train_test_split(y_data_scaled, test_size=0.2, random_state=42)

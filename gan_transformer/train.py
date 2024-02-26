@@ -1,5 +1,5 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 import sys
@@ -72,17 +72,25 @@ def test_one_epoch(model, loss_fn, test_loader, epoch):
 
 def main():
     train_dataset, test_dataset, n_features, n_inputs = data_preparation_v1()
+    
     params = Params(n_features, n_inputs)
     model = build_model(params)
     model = torch.load('model.pth')
+
     optim = Adam(model.parameters(), lr=0.0001)
     loss_fn = nn.MSELoss()
+
     train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=128, shuffle=False)
     scheduler = StepLR(optim, step_size=100, gamma=0.8)
+    
     n_epochs = 1000
+
+    # train_losses = []
+    # test_losses = []
     train_losses = list(np.load('train_losses.npy'))
     test_losses = list(np.load('test_losses.npy'))
+
     for epoch in range(n_epochs):
         train_loss = train_one_epoch(model, optim, loss_fn, train_loader, epoch)
         test_loss = test_one_epoch(model, loss_fn, test_loader, epoch)
@@ -95,18 +103,24 @@ def main():
     return
 
 def main_v2(predict_num = 10):
-    train_dataset, test_dataset, n_features, n_inputs = data_preparation_v2(predict_num)
+    train_dataset, test_dataset, n_features, n_inputs = data_preparation_v1(predict_num)
+    
     params = Params(n_features, n_inputs)
     model = build_model(params)
     model = torch.load('model.pth')
+
     optim = Adam(model.parameters(), lr=0.001)
     loss_fn = nn.MSELoss()
     train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=128, shuffle=False)
     scheduler = StepLR(optim, step_size=100, gamma=0.8)
     n_epochs = 2500
-    train_losses = list(np.load('train_losses.npy'))
-    test_losses = list(np.load('test_losses.npy'))
+
+    train_losses = []
+    test_losses = []
+    # train_losses = list(np.load('train_losses.npy'))
+    # test_losses = list(np.load('test_losses.npy'))
+
     for epoch in range(n_epochs):
         train_loss = train_one_epoch(model, optim, loss_fn, train_loader, epoch)
         test_loss = test_one_epoch(model, loss_fn, test_loader, epoch)
