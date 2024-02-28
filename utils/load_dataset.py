@@ -178,9 +178,7 @@ def data_preparation_v1(predict_num = 1):
 
     return train_dataset, test_dataset, n_features, n_inputs
 
-def data_preparation_v2(predict_num):
-    
-    window_size = 150
+def data_preparation_v2(predict_num = 1, window_size = 150):
 
     # Data preparation
     x_dataset = []
@@ -194,10 +192,12 @@ def data_preparation_v2(predict_num):
         # Check if the file exists before trying to load it
         if os.path.exists(data_file_path):
             data_dict = np.load(data_file_path, allow_pickle=True).item()
-            x_data, y_data, u1_data, u2_data = load_dataset(data_dict)
+            x_data, y_data, u1_data, u2_data = load_dataset(data_dict, predict_num)
+            print(x_data.shape)
             x_dataset.append(x_data[:window_size])
             u1_dataset.append(u1_data[:window_size])
             u2_dataset.append(u2_data[:window_size])
+            y_dataset.append(y_data[:window_size])
         else:
             print(f"File not found: {data_file_path}")
 
@@ -231,7 +231,7 @@ def data_preparation_v2(predict_num):
     u1_data_slices = []
     u2_data_slices = []
 
-    for i in range(0, window_size, x_data_scaled.shape[0]):
+    for i in range(0, x_data_scaled.shape[0], window_size):
         for j in range(window_size - predict_num + 1):
             x_slice = x_data_scaled[i+j:i+j+predict_num,:].reshape((1, predict_num, -1))
             y_slice = y_data_scaled[i+j:i+j+predict_num,:].reshape((1, predict_num, -1))
@@ -248,6 +248,8 @@ def data_preparation_v2(predict_num):
     u1_data_scaled = np.concatenate(u1_data_slices, axis = 0)
     u2_data_scaled = np.concatenate(u2_data_slices, axis = 0)
 
+    print(x_data_scaled.shape)
+    print(y_data_scaled.shape)
     # shuffled_indices = np.arange(len(x_data_scaled))
     # np.random.shuffle(shuffled_indices)
 
