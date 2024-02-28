@@ -188,7 +188,17 @@ class LayerNorm(nn.Module):
         mean = x.mean(-1, keepdim=True)
         std = x.std(-1, keepdim=True)
         return self.a_2 * (x - mean) / (std + self.eps) + self.b_2
+class FeedForward(nn.Module):
+    def __init__(self, params):
+        super(FeedForward, self).__init__()
+        self.linear1 = nn.Linear(params.d_model, params.d_model)
+        self.relu = nn.ReLU()
+        self.linear2 = nn.Linear(params.d_model, params.d_model)
 
+    def forward(self, x):
+        x = self.relu(self.linear1(x))
+        x = self.linear2(x)
+        return x
 class SublayerConnection(nn.Module):
     """
     A residual connection followed by a layer norm.
