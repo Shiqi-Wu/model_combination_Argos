@@ -38,6 +38,19 @@ def build_model(params):
     model = transformer.EncoderDecoder(params, nn.Linear(params.n_features + params.n_inputs, params.d_model), nn.Linear(params.n_inputs, params.d_model), encoder, decoder, nn.Linear(params.d_model, params.n_features))
     return model
 
+def build_model_position_emb(params):
+    self_attn = transformer.MultiHeadedAttention(params)
+    # feed_forward = nn.Linear(params.d_model, params.d_model)
+    feed_forward = transformer.FeedForward(params)
+    emb1 = transformer.Embedding_encoder(params)
+    emb2 = transformer.Embedding_decoder(params)
+    encoder_layer = transformer.EncoderLayer(params, self_attn, feed_forward, params.dropout)
+    encoder = transformer.Encoder(params, encoder_layer)
+    decoder_layer = transformer.DecoderLayer(params, self_attn, self_attn, feed_forward, params.dropout)
+    decoder = transformer.Decoder(params, decoder_layer)
+    model = transformer.EncoderDecoder(params, emb1, emb2, encoder, decoder, nn.Linear(params.d_model, params.n_features))
+    return model
+
 def train_one_epoch(model, optim, loss_fn, train_loader, epoch):
     model.train()
     train_loss = 0
@@ -128,9 +141,9 @@ def main_v2(predict_num = 20, window_size = 130):
         train_losses.append(train_loss)
         test_losses.append(test_loss)
         scheduler.step()
-        torch.save(model, 'model_v2_10_ffw.pth')
-    np.save('train_losses_v2_10_ffw.npy', train_losses)
-    np.save('test_losses_v2_10_ffw.npy', test_losses)
+        torch.save(model, 'model_v2_10_pst.pth')
+    np.save('train_losses_v2_10_pst.npy', train_losses)
+    np.save('test_losses_v2_10_pst.npy', test_losses)
     return
 
 if __name__ == "__main__":

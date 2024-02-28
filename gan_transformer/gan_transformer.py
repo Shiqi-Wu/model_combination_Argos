@@ -69,11 +69,29 @@ def clones(module, N):
     "Produce N identical layers."
     return nn.ModuleList([module for _ in range(N)])
 
-class Embedding_v2(nn.Module):
+class Embedding_encoder(nn.Module):
     def __init__(self, params):
-        super(Embedding_v2, self).__init__()
+        super(Embedding_encoder, self).__init__()
         self.params = params
-        self.embed1 = nn.Linear(params.embedding_dim + params.cov_dim+ 1, params.d_model)
+        self.linear_layer = nn.Linear(params.n_features + params.n_inputs, params.d_model)
+        self.position_emb = PositionalEncoding(params.d_model)
+
+    def forward(self, x_u_cat):
+        output = self.linear_layer(x_u_cat)
+        output = self.position_emb(output)
+        return output
+    
+class Embedding_decoder(nn.Module):
+    def __init__(self, params):
+        super(Embedding_decoder, self).__init__()
+        self.params = params
+        self.linear_layer = nn.Linear(params.n_inputs, params.d_model)
+        self.position_emb = PositionalEncoding(params.d_model)
+
+    def forward(self, u):
+        output = self.linear_layer(u)
+        output = self.position_emb(output)
+        return output
 
 class Embedding(nn.Module):
     def __init__(self, params):
@@ -188,6 +206,8 @@ class LayerNorm(nn.Module):
         mean = x.mean(-1, keepdim=True)
         std = x.std(-1, keepdim=True)
         return self.a_2 * (x - mean) / (std + self.eps) + self.b_2
+
+
 class FeedForward(nn.Module):
     def __init__(self, params):
         super(FeedForward, self).__init__()
