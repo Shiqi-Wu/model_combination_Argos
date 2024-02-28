@@ -29,7 +29,8 @@ class Params:
 
 def build_model(params):
     self_attn = transformer.MultiHeadedAttention(params)
-    feed_forward = nn.Linear(params.d_model, params.d_model)
+    # feed_forward = nn.Linear(params.d_model, params.d_model)
+    feed_forward = transformer.FeedForward(params)
     encoder_layer = transformer.EncoderLayer(params, self_attn, feed_forward, params.dropout)
     encoder = transformer.Encoder(params, encoder_layer)
     decoder_layer = transformer.DecoderLayer(params, self_attn, self_attn, feed_forward, params.dropout)
@@ -75,7 +76,7 @@ def main():
     
     params = Params(n_features, n_inputs)
     model = build_model(params)
-    model = torch.load('model.pth')
+    # model = torch.load('model.pth')
 
     optim = Adam(model.parameters(), lr=0.0001)
     loss_fn = nn.MSELoss()
@@ -86,10 +87,10 @@ def main():
     
     n_epochs = 1000
 
-    # train_losses = []
-    # test_losses = []
-    train_losses = list(np.load('train_losses.npy'))
-    test_losses = list(np.load('test_losses.npy'))
+    train_losses = []
+    test_losses = []
+    # train_losses = list(np.load('train_losses.npy'))
+    # test_losses = list(np.load('test_losses.npy'))
 
     for epoch in range(n_epochs):
         train_loss = train_one_epoch(model, optim, loss_fn, train_loader, epoch)
@@ -102,12 +103,12 @@ def main():
     np.save('test_losses.npy', test_losses)
     return
 
-def main_v2(predict_num = 10):
-    train_dataset, test_dataset, n_features, n_inputs = data_preparation_v1(predict_num)
+def main_v2(predict_num = 20, window_size = 130):
+    train_dataset, test_dataset, n_features, n_inputs = data_preparation_v2(predict_num, window_size)
     
     params = Params(n_features, n_inputs)
     model = build_model(params)
-    model = torch.load('model.pth')
+    # model = torch.load('model_v2_10.pth')
 
     optim = Adam(model.parameters(), lr=0.001)
     loss_fn = nn.MSELoss()
@@ -127,10 +128,10 @@ def main_v2(predict_num = 10):
         train_losses.append(train_loss)
         test_losses.append(test_loss)
         scheduler.step()
-        torch.save(model, 'model_v2_10.pth')
-    np.save('train_losses_v2_10.npy', train_losses)
-    np.save('test_losses_v2_10.npy', test_losses)
+        torch.save(model, 'model_v2_10_ffw.pth')
+    np.save('train_losses_v2_10_ffw.npy', train_losses)
+    np.save('test_losses_v2_10_ffw.npy', test_losses)
     return
 
 if __name__ == "__main__":
-   main_v2()
+   main_v2(predict_num = 10, window_size = 140)
