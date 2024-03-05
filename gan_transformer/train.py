@@ -1,5 +1,5 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 import sys
@@ -13,6 +13,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from torch.optim.lr_scheduler import StepLR
 import gan_transformer as transformer
 from load_dataset import *
+import argparse
 
 
 class Params:
@@ -27,9 +28,13 @@ class Params:
         self.n_features = n_features
         self.n_inputs = n_inputs
 
+def parse_arguments():
+    parser = argparse.ArgumentParser(description = 'Process the inputs.')
+
+
+
 def build_model(params):
     self_attn = transformer.MultiHeadedAttention(params)
-    # feed_forward = nn.Linear(params.d_model, params.d_model)
     feed_forward = transformer.FeedForward(params)
     encoder_layer = transformer.EncoderLayer(params, self_attn, feed_forward, params.dropout)
     encoder = transformer.Encoder(params, encoder_layer)
@@ -40,13 +45,25 @@ def build_model(params):
 
 def build_model_position_emb(params):
     self_attn = transformer.MultiHeadedAttention(params)
-    # feed_forward = nn.Linear(params.d_model, params.d_model)
     feed_forward = transformer.FeedForward(params)
     emb1 = transformer.Embedding_encoder(params)
     emb2 = transformer.Embedding_decoder(params)
     encoder_layer = transformer.EncoderLayer(params, self_attn, feed_forward, params.dropout)
     encoder = transformer.Encoder(params, encoder_layer)
     decoder_layer = transformer.DecoderLayer(params, self_attn, self_attn, feed_forward, params.dropout)
+    decoder = transformer.Decoder(params, decoder_layer)
+    model = transformer.EncoderDecoder(params, emb1, emb2, encoder, decoder, nn.Linear(params.d_model, params.n_features))
+    return model
+
+def build_model_pureFFW(params):
+    params.N = 2 * params.N
+    self_attn = transformer.MultiHeadedAttention(params)
+    feed_forward = transformer.FeedForward(params)
+    emb1 = nn.Linear(params.n_features + params.n_inputs, params.d_model)
+    emb2 = nn.Linear(params.n_inputs, params.d_model)
+    encoder_layer = transformer.EncoderLayer_pureFFW(params, feed_forward, params.dropout)
+    encoder = transformer.Encoder(params, encoder_layer)
+    decoder_layer = transformer.DecoderLayer_pureFFW(params, self_attn, feed_forward, params.dropout)
     decoder = transformer.Decoder(params, decoder_layer)
     model = transformer.EncoderDecoder(params, emb1, emb2, encoder, decoder, nn.Linear(params.d_model, params.n_features))
     return model
@@ -116,12 +133,16 @@ def main():
     np.save('test_losses.npy', test_losses)
     return
 
-def main_v2(predict_num = 20, window_size = 130):
+
+
+def main_v2(predict_num = 1, window_size = 150):
     train_dataset, test_dataset, n_features, n_inputs = data_preparation_v2(predict_num, window_size)
     
     params = Params(n_features, n_inputs)
-    model = build_model(params)
+    model = build_model_position_emb(params)
     # model = torch.load('model_v2_10.pth')
+
+    # model = build_model(params)
 
     optim = Adam(model.parameters(), lr=0.001)
     loss_fn = nn.MSELoss()
@@ -141,9 +162,12 @@ def main_v2(predict_num = 20, window_size = 130):
         train_losses.append(train_loss)
         test_losses.append(test_loss)
         scheduler.step()
-        torch.save(model, 'model_v2_10_pst.pth')
-    np.save('train_losses_v2_10_pst.npy', train_losses)
-    np.save('test_losses_v2_10_pst.npy', test_losses)
+        torch.save(model, 'model_v2_10_pst_March.pth')
+        # torch.save(model, 'model_v2_1_ffw.pth')
+    # np.save('test_losses_v2_10_pst.npy', test_losses)
+        
+    np.save('train_losses_v2_10_pst_March.npy', train_losses)
+    np.save('test_losses_v2_10_pst_March.npy', test_losses)
     return
 
 if __name__ == "__main__":

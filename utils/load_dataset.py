@@ -33,8 +33,9 @@ def data_preparation():
     u1_dataset = []
     u2_dataset = []
 
-    for suffix in range(10, 60):
-        data_file_path = '../data/data_dict_' + str(suffix) + '.npy'
+    for suffix in range(1,51):
+        data_file_path = '../data_March/data_dict_' + str(suffix) + '.npy'
+        print(data_file_path)
         
         # Check if the file exists before trying to load it
         if os.path.exists(data_file_path):
@@ -107,9 +108,10 @@ def data_preparation_v1(predict_num = 1):
     u2_dataset = []
 
 
-    for suffix in range(10, 60):
-        data_file_path = '../data/data_dict_' + str(suffix) + '.npy'
-        
+    for suffix in range(1, 51):
+        data_file_path = '../data_March/data_dict_' + str(suffix) + '.npy'
+        print(data_file_path)
+
         # Check if the file exists before trying to load it
         if os.path.exists(data_file_path):
             data_dict = np.load(data_file_path, allow_pickle=True).item()
@@ -186,9 +188,12 @@ def data_preparation_v2(predict_num = 1, window_size = 150):
     u1_dataset = []
     u2_dataset = []
 
-    for suffix in range(10, 60):
-        data_file_path = '../data/data_dict_' + str(suffix) + '.npy'
-        
+    for suffix in range(1, 51):
+
+        data_file_path = '../data_March/data_dict_' + str(suffix) + '.npy'
+        print(data_file_path)
+
+
         # Check if the file exists before trying to load it
         if os.path.exists(data_file_path):
             data_dict = np.load(data_file_path, allow_pickle=True).item()

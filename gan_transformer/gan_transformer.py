@@ -162,8 +162,7 @@ class EncoderLayer(nn.Module):
     def forward(self, x, mask):
         "Follow Figure 1 (left) for connections."
         x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, mask))
-        return x
-
+        return self.sublayer[1](x, self.feed_forward)  
     
 class Decoder(nn.Module):
     "Generic N layer decoder with masking."
@@ -193,7 +192,7 @@ class DecoderLayer(nn.Module):
         x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x, tgt_mask))
         x = self.sublayer[1](x, lambda x: self.src_attn(x, m, m, src_mask))
         return self.sublayer[2](x, self.feed_forward)
- 
+
 class LayerNorm(nn.Module):
     "Construct a layernorm module (See citation for details)."
     def __init__(self, features, eps=1e-6): 
@@ -373,204 +372,31 @@ class PositionwiseFeedForward(nn.Module):
 
     def forward(self, x):
         return self.w_2(self.dropout(F.relu(self.w_1(x))))
+
+
+######## test for ffw
+class EncoderLayer_pureFFW(nn.Module):
+    def __init__(self, params, feed_forward, dropout):
+        super(EncoderLayer_pureFFW, self).__init__()
+        self.params = params
+        self.feed_forward = feed_forward
+        self.sublayer = clones(SublayerConnection(params.d_model, dropout), 1)
+        self.size = params.d_model
     
-class Discriminator(nn.Module):
-    def __init__(self, params):
-        super(Discriminator, self).__init__()
-        self.model = nn.Sequential(
-            nn.Linear(params.train_window, 512),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Linear(512, 128),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Linear(128, 1),
-            nn.Sigmoid(),
-        )
-
-    def forward(self, z):
-        validity = self.model(z)
-        return validity
-
-def test(model, params, x, v_batch, id_batch):
-    batch_size = x.shape[0]
-    sample_mu = torch.zeros(batch_size, params.predict_steps, device=params.device)
-    sample_q90 = torch.zeros(batch_size, params.predict_steps, device=params.device)
-    src_mask, memory = model.encode(x[:, :params.predict_start,:], id_batch)
-    for t in range(params.predict_steps):
-        ys = x[:, params.predict_start:params.predict_start+t+1,:]
-        out = model.decode(memory, ys, id_batch, src_mask)
-        q50, q90 = model.generator(out)
-        if t!=0:    
-            q50 = q50[:, -1]
-            q90 = q90[:, -1]
-        sample_mu[:, t] = q50 * v_batch[:, 0] + v_batch[:, 1]
-        sample_q90[:, t] = q90* v_batch[:, 0]
-        if t < (params.predict_steps - 1):
-            x[:, params.predict_steps+t+1, 0] = q50
-
-        return sample_mu, sample_q90
-    
-def loss_quantile(mu:Variable, labels:Variable, quantile:Variable):
-    loss = 0
-    for i in range(mu.shape[1]):
-        mu_e = mu[:, i]
-        labels_e = labels[:, i]
-
-        I = (labels_e >= mu_e).float()
-        each_loss = 2*(torch.sum(quantile*((labels_e -mu_e)*I)+ (1-quantile) *(mu_e- labels_e)*(1-I)))
-        loss += each_loss
-
-    return loss
-
-def loss_fn(mu: Variable, sigma: Variable, labels: Variable):
-    '''
-    Compute using gaussian the log-likehood which needs to be maximized. Ignore time steps where labels are missing.
-    Args:
-        mu_en: (Variable) dimension [batch_size, context_len] - estimated mean at time step t
-        sigma_en: (Variable) dimension [batch_size, context_len] - estimated standard deviation at time step t
-        mu_en: (Variable) dimension [batch_size, predict_len] - estimated mean at time step t
-        sigma_en: (Variable) dimension [batch_size, predict_len] - estimated standard deviation at time step t
-        labels: (Variable) dimension [batch_size] z_t
-    Returns:
-        loss: (Variable) average log-likelihood loss across the batch
-    '''
-    loss = 0
-    zero_index = (labels != 0)
-    for i in range(mu.shape[1]):
-        zero_index = (labels[:, i] != 0)
-        mu_e = mu[:, i]
-        sigma_e = sigma[:, i]
-        labels_e = labels[:, i]
-        distribution = torch.distributions.normal.Normal(mu_e, sigma_e)
-        likelihood = distribution.log_prob(labels_e)
-        each_loss = -torch.mean(likelihood)
-        loss += each_loss
-    return loss
-
-
-# if relative is set to True, metrics are not normalized by the scale of labels
-def accuracy_ND(mu: torch.Tensor, labels: torch.Tensor, relative = False):
-    zero_index = (labels != 0)
-    if relative:
-        diff = torch.mean(torch.abs(mu[zero_index] - labels[zero_index])).item()
-        return [diff, 1]
-    else:
-        diff = torch.sum(torch.abs(mu[zero_index] - labels[zero_index])).item()
-        summation = torch.sum(torch.abs(labels[zero_index])).item()
-        return [diff, summation]
-    
-def accuracy_MAPE(mu: torch.Tensor, labels: torch.Tensor, relative = False):
-    zero_index = (labels != 0)
-    if relative:
-        diff = torch.mean(torch.abs(mu[zero_index] - labels[zero_index])).item()
-        return [diff, 1]
-    else:
-        diff = torch.sum(torch.abs(mu[zero_index] - labels[zero_index])).item()
-        summation = torch.sum(torch.abs(labels[zero_index])).item()
-        return [diff, summation]
-    
-
-def accuracy_RMSE(mu: torch.Tensor, labels: torch.Tensor, relative = False):
-    zero_index = (labels != 0)
-    diff = torch.sum(torch.mul((mu[zero_index] - labels[zero_index]), (mu[zero_index] - labels[zero_index]))).item()
-    if relative:
-        return [diff, torch.sum(zero_index).item(), torch.sum(zero_index).item()]
-    else:
-        summation = torch.sum(torch.abs(labels[zero_index])).item()
-        if summation == 0:
-            logger.error('summation denominator error! ')
-        return [diff, summation, torch.sum(zero_index).item()]
-
-
-def accuracy_ROU(rou: float, mu: torch.Tensor, labels: torch.Tensor, relative = False):
-    numerator = 0
-    denominator = 0
-    #pred_samples = samples.shape[0]
-    rou_pred = mu
-    abs_diff = labels - rou_pred
-    numerator += 2 * (torch.sum(rou * abs_diff[labels > rou_pred]) - torch.sum(
-        (1 - rou) * abs_diff[labels <= rou_pred])).item()
-    denominator += torch.sum(labels).item()
-    if relative:
-        return [numerator, torch.sum(labels != 0).item()]
-    else:
-        return [numerator, denominator]
-
-def quantile_loss(quantile:float, mu:torch.Tensor, labels:torch.Tensor):
-    #gaussian = torch.distributions.normal.Normal(mu, sigma)
-    #pred = gaussian.sample()
-    I = (labels >= mu).float()
-    diff = 2*(torch.sum(quantile*((labels-mu)*I)+ (1-quantile) *(mu-labels)*(1-I))).item()
-    denom = torch.sum(torch.abs(labels)).item()
-    q_loss = diff/denom
-    return q_loss
-
-def MAPE(mu:torch.Tensor, labels:torch.Tensor):
-    zero_index = (labels != 0)
-    diff = mu[zero_index] -labels[zero_index]
-    lo = torch.mean(torch.abs(diff / labels[zero_index])) *100
-    return lo
-
-def accuracy_ND_(mu: torch.Tensor, labels: torch.Tensor, relative = False):
-    mu = mu.cpu().detach().numpy()
-    labels = labels.cpu().detach().numpy()
-
-    mu[labels == 0] = 0.
-
-    diff = np.sum(np.abs(mu - labels), axis=1)
-    if relative:
-        summation = np.sum((labels != 0), axis=1)
-        mask = (summation == 0)
-        summation[mask] = 1
-        result = diff / summation
-        result[mask] = -1
-        return result
-    else:
-        summation = np.sum(np.abs(labels), axis=1)
-        mask = (summation == 0)
-        summation[mask] = 1
-        result = diff / summation
-        result[mask] = -1
-        return result
-    
-def accuracy_RMSE_(mu: torch.Tensor, labels: torch.Tensor, relative = False):
-    mu = mu.cpu().detach().numpy()
-    labels = labels.cpu().detach().numpy()
-
-    mask = labels == 0
-    mu[mask] = 0.
-
-    diff = np.sum((mu - labels) ** 2, axis=1)
-    summation = np.sum(np.abs(labels), axis=1)
-    mask2 = (summation == 0)
-    if relative:
-        div = np.sum(~mask, axis=1)
-        div[mask2] = 1
-        result = np.sqrt(diff / div)
-        result[mask2] = -1
-        return result
-    else:
-        summation[mask2] = 1
-        result = (np.sqrt(diff) / summation) * np.sqrt(np.sum(~mask, axis=1))
-        result[mask2] = -1
-        return result
-
-def accuracy_ROU_(rou: float, mu: torch.Tensor, labels: torch.Tensor, relative = False):
-    mu = mu.cpu().detach().numpy()
-    labels = labels.cpu().detach().numpy()
-    mask = labels == 0
-    mu[mask] = 0.
-
-    abs_diff = np.abs(labels - mu)
-    abs_diff_1 = abs_diff.copy()
-    abs_diff_1[labels < mu] = 0.
-    abs_diff_2 = abs_diff.copy()
-    abs_diff_2[labels >= mu] = 0.
-
-    numerator = 2 * (rou * np.sum(abs_diff_1, axis=1) + (1 - rou) * np.sum(abs_diff_2, axis=1))
-    denominator = np.sum(labels, axis=1)
-    
-    mask2 = (denominator == 0)
-    denominator[mask2] = 1
-    result = numerator / denominator
-    result[mask2] = -1
-    return result
+    def forward(self, x, mask):
+        "Follow Figure 1 (left) for connections."
+        return self.sublayer[0](x, self.feed_forward)
+class DecoderLayer_pureFFW(nn.Module):
+    "Decoder is made of self-attn, src-attn, and feed forward (defined below)"
+    def __init__(self, params, src_attn, feed_forward, dropout):
+        super(DecoderLayer_pureFFW, self).__init__()
+        self.size = params.d_model
+        self.src_attn = src_attn
+        self.feed_forward = feed_forward
+        self.sublayer = clones(SublayerConnection(self.size, dropout), 2)
+ 
+    def forward(self, x, memory, src_mask, tgt_mask):
+        "Follow Figure 1 (right) for connections."
+        m = memory
+        x = self.sublayer[0](x, lambda x: self.src_attn(x, m, m, src_mask))
+        return self.sublayer[1](x, self.feed_forward)
