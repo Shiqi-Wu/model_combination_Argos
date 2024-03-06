@@ -28,9 +28,39 @@ class Params:
         self.n_features = n_features
         self.n_inputs = n_inputs
 
-def parse_arguments():
-    parser = argparse.ArgumentParser(description = 'Process the inputs.')
 
+def parse_arguments():
+    parser = argparse.ArgumentParser(description='Process the inputs.')
+
+    # For string arguments, you don't need to explicitly set the type, 
+    parser.add_argument('--output_dir', required=False, default='../output', type=str, help='output dictionary')
+    parser.add_argument('--output_suffix', required=True, type=str, help='output_suffix')
+    
+    # For boolean arguments, use the custom function to handle boolean values from strings.
+    parser.add_argument('--position_encode', required=False, default=True, type=str_to_bool, help='need position encoder or not')
+    
+    parser.add_argument('--data', required=False, default='../data_March', type=str, help='data dictionary')
+    parser.add_argument('--model_name', required=False, default=None, type=str, help='preload model parameters')
+    
+    # For numerical arguments, you can specify types like int or float.
+    parser.add_argument('--predict_num', required=False, default=10, type=int, help='predict number')
+    parser.add_argument('--window_size', required=False, default=140, type=int, help='window size')
+    parser.add_argument('--epoch',  required=False, default=2500, type=int, help='training epoch')
+    args = parser.parse_args()
+
+    return args
+
+def str_to_bool(value):
+    if isinstance(value, bool):
+       return value
+    if value.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif value.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
+
+    
 
 
 def build_model(params):
@@ -101,60 +131,64 @@ def test_one_epoch(model, loss_fn, test_loader, epoch):
     print(f"Epoch {epoch + 1}, Testing Loss: {test_loss / len(test_loader):.4e}")
     return test_loss / len(test_loader)
 
-def main():
-    train_dataset, test_dataset, n_features, n_inputs = data_preparation_v1()
+# def main():
+#     train_dataset, test_dataset, n_features, n_inputs = data_preparation_v1()
+    
+#     params = Params(n_features, n_inputs)
+#     model = build_model(params)
+#     # model = torch.load('model.pth')
+
+#     optim = Adam(model.parameters(), lr=0.0001)
+#     loss_fn = nn.MSELoss()
+
+#     train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
+#     test_loader = DataLoader(test_dataset, batch_size=128, shuffle=False)
+#     scheduler = StepLR(optim, step_size=100, gamma=0.8)
+    
+#     n_epochs = 1000
+
+#     train_losses = []
+#     test_losses = []
+#     # train_losses = list(np.load('train_losses.npy'))
+#     # test_losses = list(np.load('test_losses.npy'))
+
+#     for epoch in range(n_epochs):
+#         train_loss = train_one_epoch(model, optim, loss_fn, train_loader, epoch)
+#         test_loss = test_one_epoch(model, loss_fn, test_loader, epoch)
+#         train_losses.append(train_loss)
+#         test_losses.append(test_loss)
+#         scheduler.step()
+#         torch.save(model, 'model.pth')
+#     np.save('train_losses.npy', train_losses)
+#     np.save('test_losses.npy', test_losses)
+#     return
+
+def main_v2(args):
+    train_dataset, test_dataset, n_features, n_inputs = data_preparation_v2(args.predict_num, args.window_size)
     
     params = Params(n_features, n_inputs)
-    model = build_model(params)
-    # model = torch.load('model.pth')
+    if args.position_encode == True:
+        model = build_model_position_emb(params)
+    else:
+        model = build_model(params)
+    if args.model_name!=None:
+        model = torch.load(args.model_name)
 
-    optim = Adam(model.parameters(), lr=0.0001)
-    loss_fn = nn.MSELoss()
-
-    train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=128, shuffle=False)
-    scheduler = StepLR(optim, step_size=100, gamma=0.8)
-    
-    n_epochs = 1000
-
-    train_losses = []
-    test_losses = []
-    # train_losses = list(np.load('train_losses.npy'))
-    # test_losses = list(np.load('test_losses.npy'))
-
-    for epoch in range(n_epochs):
-        train_loss = train_one_epoch(model, optim, loss_fn, train_loader, epoch)
-        test_loss = test_one_epoch(model, loss_fn, test_loader, epoch)
-        train_losses.append(train_loss)
-        test_losses.append(test_loss)
-        scheduler.step()
-        torch.save(model, 'model.pth')
-    np.save('train_losses.npy', train_losses)
-    np.save('test_losses.npy', test_losses)
-    return
-
-
-
-def main_v2(predict_num = 1, window_size = 150):
-    train_dataset, test_dataset, n_features, n_inputs = data_preparation_v2(predict_num, window_size)
-    
-    params = Params(n_features, n_inputs)
-    model = build_model_position_emb(params)
-    # model = torch.load('model_v2_10.pth')
-
-    # model = build_model(params)
 
     optim = Adam(model.parameters(), lr=0.001)
     loss_fn = nn.MSELoss()
     train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=128, shuffle=False)
     scheduler = StepLR(optim, step_size=100, gamma=0.8)
-    n_epochs = 2500
+    n_epochs = args.epoch
 
     train_losses = []
     test_losses = []
-    # train_losses = list(np.load('train_losses.npy'))
-    # test_losses = list(np.load('test_losses.npy'))
+
+    model_output_path = os.path.join(args.output_dir, f"model_{args.output_suffix}.pth")
+    train_loss_output_path = os.path.join(args.output_dir, f"train_loss_{args.output_suffix}.npy")
+    test_loss_output_path = os.path.join(args.output_dir, f"test_loss_{args.output_suffix}.npy")
+
 
     for epoch in range(n_epochs):
         train_loss = train_one_epoch(model, optim, loss_fn, train_loader, epoch)
@@ -162,13 +196,12 @@ def main_v2(predict_num = 1, window_size = 150):
         train_losses.append(train_loss)
         test_losses.append(test_loss)
         scheduler.step()
-        torch.save(model, 'model_v2_10_pst_March.pth')
-        # torch.save(model, 'model_v2_1_ffw.pth')
-    # np.save('test_losses_v2_10_pst.npy', test_losses)
+        torch.save(model, model_output_path)
         
-    np.save('train_losses_v2_10_pst_March.npy', train_losses)
-    np.save('test_losses_v2_10_pst_March.npy', test_losses)
+    np.save(train_loss_output_path, train_losses)
+    np.save(test_loss_output_path, test_losses)
     return
 
 if __name__ == "__main__":
-   main_v2(predict_num = 10, window_size = 140)
+   args = parse_arguments()
+   main_v2(args)
