@@ -1,0 +1,13 @@
+output_dir: "output_linear_100/"
+output_suffix: "linear_100"
+position_encode: True
+data_dir: "../data_linear_100/"
+predict_num: 10
+window_size: 140
+epoch: 2500
+h: 8
+d_model: 128
+d_ff: 2048
+dropout: 0.1
+attn_type: "softmax"
+N_num: 6

@@ -1,5 +1,3 @@
-import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 import sys
@@ -14,6 +12,9 @@ from torch.optim.lr_scheduler import StepLR
 import gan_transformer as transformer
 from load_dataset import *
 import argparse
+import os
+import yaml
+import matplotlib.pyplot as plt
 
 
 class Params:
@@ -30,25 +31,36 @@ class Params:
 
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(description='Process the inputs.')
-
-    # For string arguments, you don't need to explicitly set the type, 
-    parser.add_argument('--output_dir', required=False, default='../output', type=str, help='output dictionary')
-    parser.add_argument('--output_suffix', required=True, type=str, help='output_suffix')
-    
-    # For boolean arguments, use the custom function to handle boolean values from strings.
-    parser.add_argument('--position_encode', required=False, default=True, type=str_to_bool, help='need position encoder or not')
-    
-    parser.add_argument('--data', required=False, default='../data_March', type=str, help='data dictionary')
-    parser.add_argument('--model_name', required=False, default=None, type=str, help='preload model parameters')
-    
-    # For numerical arguments, you can specify types like int or float.
-    parser.add_argument('--predict_num', required=False, default=10, type=int, help='predict number')
-    parser.add_argument('--window_size', required=False, default=140, type=int, help='window size')
-    parser.add_argument('--epoch',  required=False, default=2500, type=int, help='training epoch')
+    parser = argparse.ArgumentParser(description='Reaction-diffusion model')
+    parser.add_argument('--config', type=str, help='configuration file path')
     args = parser.parse_args()
-
     return args
+
+def read_config_file(config_path):
+    with open(config_path, 'r') as file:
+        config = yaml.safe_load(file)
+    return config
+
+# def parse_arguments():
+#     parser = argparse.ArgumentParser(description='Process the inputs.')
+
+#     # For string arguments, you don't need to explicitly set the type, 
+#     parser.add_argument('--output_dir', required=False, default='../output', type=str, help='output dictionary')
+#     parser.add_argument('--output_suffix', required=True, type=str, help='output_suffix')
+    
+#     # For boolean arguments, use the custom function to handle boolean values from strings.
+#     parser.add_argument('--position_encode', required=False, default=True, type=str_to_bool, help='need position encoder or not')
+    
+#     parser.add_argument('--data', required=False, default='../data_March', type=str, help='data dictionary')
+#     parser.add_argument('--model_name', required=False, default=None, type=str, help='preload model parameters')
+    
+#     # For numerical arguments, you can specify types like int or float.
+#     parser.add_argument('--predict_num', required=False, default=10, type=int, help='predict number')
+#     parser.add_argument('--window_size', required=False, default=140, type=int, help='window size')
+#     parser.add_argument('--epoch',  required=False, default=2500, type=int, help='training epoch')
+#     args = parser.parse_args()
+
+#     return args
 
 def str_to_bool(value):
     if isinstance(value, bool):
@@ -59,8 +71,6 @@ def str_to_bool(value):
         return False
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
-
-    
 
 
 def build_model(params):
@@ -163,16 +173,16 @@ def test_one_epoch(model, loss_fn, test_loader, epoch):
 #     np.save('test_losses.npy', test_losses)
 #     return
 
-def main_v2(args):
-    train_dataset, test_dataset, n_features, n_inputs = data_preparation_v2(args.predict_num, args.window_size)
+def main_v2(config):
+    train_dataset, test_dataset, n_features, n_inputs = data_preparation_v2(config)
     
-    params = Params(n_features, n_inputs)
-    if args.position_encode == True:
+    params = Params(n_features, n_inputs, h = config['h'], d_model = config['d_model'], d_ff = config['d_ff'], dropout = config['dropout'], attn_type = config['attn_type'], N = config['N_num'])
+    if config['position_encode'] == True:
         model = build_model_position_emb(params)
     else:
         model = build_model(params)
-    if args.model_name!=None:
-        model = torch.load(args.model_name)
+    if config.get('model_name')!=None:
+        model = torch.load(config['model_name'])
 
 
     optim = Adam(model.parameters(), lr=0.001)
@@ -180,15 +190,18 @@ def main_v2(args):
     train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=128, shuffle=False)
     scheduler = StepLR(optim, step_size=100, gamma=0.8)
-    n_epochs = args.epoch
+    n_epochs = config['epoch']
 
     train_losses = []
     test_losses = []
 
-    model_output_path = os.path.join(args.output_dir, f"model_{args.output_suffix}.pth")
-    train_loss_output_path = os.path.join(args.output_dir, f"train_loss_{args.output_suffix}.npy")
-    test_loss_output_path = os.path.join(args.output_dir, f"test_loss_{args.output_suffix}.npy")
+    if not os.path.exists(config['output_dir']):
+        os.makedirs(config['output_dir'], exist_ok=True)
 
+    model_output_path = os.path.join(config['output_dir'], f"model_{config['output_suffix']}.pth")
+    train_loss_output_path = os.path.join(config['output_dir'], f"train_loss_{config['output_suffix']}.npy")
+    test_loss_output_path = os.path.join(config['output_dir'], f"test_loss_{config['output_suffix']}.npy")
+    train_test_loss_fig_output_path = os.path.join(config['output_dir'], f"train_test_loss_{config['output_suffix']}.png")
 
     for epoch in range(n_epochs):
         train_loss = train_one_epoch(model, optim, loss_fn, train_loader, epoch)
@@ -197,11 +210,23 @@ def main_v2(args):
         test_losses.append(test_loss)
         scheduler.step()
         torch.save(model, model_output_path)
-        
+
     np.save(train_loss_output_path, train_losses)
     np.save(test_loss_output_path, test_losses)
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(train_losses, label='Train Loss')
+    plt.plot(test_losses, label='Test Loss')
+    plt.title('Training and Test Losses')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.yscale('log')
+    plt.legend()
+
+    plt.savefig(train_test_loss_fig_output_path)
     return
 
 if __name__ == "__main__":
    args = parse_arguments()
-   main_v2(args)
+   config = read_config_file(args.config)
+   main_v2(config)

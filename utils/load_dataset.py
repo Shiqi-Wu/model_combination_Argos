@@ -26,17 +26,17 @@ def load_dataset(data_dict, predict_num = 1):
     u2_data = np.concatenate((dt_data, np.reshape(np.array(I_p)[predict_num:], (-1,1)), np.reshape(np.concatenate((np.array(I_p)[predict_num+1:], np.array([I_p[0]]))), (-1,1))), axis = 1)
     return x_data, y_data, u1_data, u2_data
 
-def data_preparation():
+def build_dataset_list(config):
     # Data preparation
     x_dataset = []
     y_dataset = []
     u1_dataset = []
     u2_dataset = []
 
-    for suffix in range(1,51):
-        data_file_path = '../data_March/data_dict_' + str(suffix) + '.npy'
-        print(data_file_path)
-        
+    data_dir = config['data_dir']
+    for item in os.listdir(data_dir):
+        data_file_path = os.path.join(data_dir, item)
+
         # Check if the file exists before trying to load it
         if os.path.exists(data_file_path):
             data_dict = np.load(data_file_path, allow_pickle=True).item()
@@ -45,15 +45,23 @@ def data_preparation():
             y_dataset.append(y_data)
             u1_dataset.append(u1_data)
             u2_dataset.append(u2_data)
+            print(x_data.shape)
         else:
             print(f"File not found: {data_file_path}")
 
+    return x_dataset, y_dataset, u1_dataset, u2_dataset
+
+
+def data_preparation(config):
+    
     """
     x_data.shape = (n_samples, n_features)
     y_data.shape = (n_samples, n_features)
     u1_data.shape = (n_samples, n_inputs)
     u2_data.shape = (n_samples, n_inputs)
     """
+
+    x_dataset, y_dataset, u1_dataset, u2_dataset = build_dataset_list(config)
 
     x_data = np.concatenate(x_dataset, axis = 0)
     y_data = np.concatenate(y_dataset, axis = 0)
@@ -100,35 +108,10 @@ def data_preparation():
 
     return train_dataset, test_dataset, n_features, n_inputs
 
-def data_preparation_v1(predict_num = 1):
+def data_preparation_v1(config):
     # Data preparation
-    x_dataset = []
-    y_dataset = []
-    u1_dataset = []
-    u2_dataset = []
-
-
-    for suffix in range(1, 51):
-        data_file_path = '../data_March/data_dict_' + str(suffix) + '.npy'
-        print(data_file_path)
-
-        # Check if the file exists before trying to load it
-        if os.path.exists(data_file_path):
-            data_dict = np.load(data_file_path, allow_pickle=True).item()
-            x_data, y_data, u1_data, u2_data = load_dataset(data_dict, predict_num)
-            x_dataset.append(x_data)
-            y_dataset.append(y_data)
-            u1_dataset.append(u1_data)
-            u2_dataset.append(u2_data)
-        else:
-            print(f"File not found: {data_file_path}")
-
-    """
-    x_data.shape = (n_samples, n_features)
-    y_data.shape = (n_samples, n_features)
-    u1_data.shape = (n_samples, n_inputs)
-    u2_data.shape = (n_samples, n_inputs)
-    """
+    
+    x_dataset, y_dataset, u1_dataset, u2_dataset = build_dataset_list(config)
 
     x_data = np.concatenate(x_dataset, axis = 0)
     y_data = np.concatenate(y_dataset, axis = 0)
@@ -180,38 +163,33 @@ def data_preparation_v1(predict_num = 1):
 
     return train_dataset, test_dataset, n_features, n_inputs
 
-def data_preparation_v2(predict_num = 1, window_size = 150):
+def data_preparation_v2(config):
 
+    predict_num = config['predict_num']
+    window_size = config['window_size']
+    data_dir = config['data_dir']
+
+    
     # Data preparation
     x_dataset = []
     y_dataset = []
     u1_dataset = []
     u2_dataset = []
 
-    for suffix in range(1, 51):
 
-        data_file_path = '../data_March/data_dict_' + str(suffix) + '.npy'
-        print(data_file_path)
-
+    for item in os.listdir(data_dir):
+        data_file_path = os.path.join(data_dir, item)
 
         # Check if the file exists before trying to load it
         if os.path.exists(data_file_path):
             data_dict = np.load(data_file_path, allow_pickle=True).item()
             x_data, y_data, u1_data, u2_data = load_dataset(data_dict, predict_num)
-            print(x_data.shape)
             x_dataset.append(x_data[:window_size])
             u1_dataset.append(u1_data[:window_size])
             u2_dataset.append(u2_data[:window_size])
             y_dataset.append(y_data[:window_size])
         else:
             print(f"File not found: {data_file_path}")
-
-    """
-    x_data.shape = (n_samples, n_features)
-    y_data.shape = (n_samples, n_features)
-    u1_data.shape = (n_samples, n_inputs)
-    u2_data.shape = (n_samples, n_inputs)
-    """
 
     x_data = np.concatenate(x_dataset, axis = 0)
     y_data = np.concatenate(y_dataset, axis = 0)
