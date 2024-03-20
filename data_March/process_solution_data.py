@@ -42,6 +42,15 @@ def main(params):
         np.save(f'data_dict_{suffix}.npy', data_dict)
         print(f"Data for suffix {suffix} has been saved as 'data_dict_{suffix}.npy' file.")
 
+def change_name(params):
+    for idx in range(1, 51):  # idx从1到50
+        old_file_name = f"data_dict_{params[idx-1][0]}_params{params[idx-1][1]}.npy"
+        new_file_name = f"data_dict_{params[idx-1][0]}_{params[idx-1][1]}.npy"
+    
+        if os.path.exists(old_file_name):
+            os.rename(old_file_name, new_file_name)
+        else:
+            print(f"File {old_file_name} does not exist.")
 
 if __name__ == '__main__':
     params = [
@@ -54,6 +63,7 @@ if __name__ == '__main__':
     (51, 46), (52, 46), (52, 48), (52, 54), (54, 48),
     (55, 59), (56, 41), (56, 44), (56, 59), (58, 41),
     (59, 41), (59, 43), (59, 46), (59, 48), (59, 50),
-    (59, 56), (60, 45), (60, 51)]
+    (59, 56), (60, 45), (60, 51), (50, 0), (0, 50)]
 
-    main(params)
+    # main(params)
+    change_name(params)
