@@ -45,14 +45,63 @@ def build_dataset_list(config):
             y_dataset.append(y_data)
             u1_dataset.append(u1_data)
             u2_dataset.append(u2_data)
-            print(x_data.shape)
         else:
             print(f"File not found: {data_file_path}")
 
     return x_dataset, y_dataset, u1_dataset, u2_dataset
 
 def data_preparation_koopman(config):
+    """
+    x_data.shape = (n_samples, n_features)
+    y_data.shape = (n_samples, n_features)
+    u1_data.shape = (n_samples, n_inputs)
+    u2_data.shape = (n_samples, n_inputs)
+    """
+
+    x_dataset, y_dataset, u1_dataset, _ = build_dataset_list(config)
+
+    x_data = np.concatenate(x_dataset, axis = 0)
+    y_data = np.concatenate(y_dataset, axis = 0)
+    u1_data = np.concatenate(u1_dataset, axis = 0)
+    nu_data = np.full(x_data.shape[0], int(config['nu'])).reshape(-1, 1)
+
+    n_features = x_data.shape[1]
+    n_inputs = u1_data.shape[1]
+
+    # Split the data into training and testing sets
+
+    scaler_x.fit(x_data)
+    scaler_u.fit(u1_data)
+    x_data_scaled = scaler_x.transform(x_data)
+    y_data_scaled = scaler_x.transform(y_data)
+    u1_data_scaled = scaler_u.transform(u1_data)
+
+    shuffled_indices = np.arange(len(x_data))
+    np.random.shuffle(shuffled_indices)
+
+    x_data_scaled = x_data_scaled[shuffled_indices]
+    y_data_scaled = y_data_scaled[shuffled_indices]
+    u1_data_scaled = u1_data_scaled[shuffled_indices]
+
+    x_train, x_test, y_train, y_test, u1_train, u1_test, nu_train, nu_test = train_test_split(
+        x_data_scaled, y_data_scaled, u1_data_scaled, nu_data, test_size=0.2, random_state=42)
+
     
+    x_train = torch.tensor(x_train, dtype=torch.float32)
+    y_train = torch.tensor(y_train, dtype=torch.float32)
+    u1_train = torch.tensor(u1_train, dtype=torch.float32)
+    nu_train = torch.tensor(nu_train, dtype=torch.int16)
+    x_test = torch.tensor(x_test, dtype=torch.float32)
+    y_test = torch.tensor(y_test, dtype=torch.float32)
+    u1_test = torch.tensor(u1_test, dtype=torch.float32)
+    nu_test = torch.tensor(nu_test, dtype=torch.int16)
+
+    
+    train_dataset = TensorDataset(x_train, y_train, u1_train, nu_train)
+    test_dataset = TensorDataset(x_test, y_test, u1_test, nu_test)
+
+    return train_dataset, test_dataset, n_features, n_inputs
+
 
 def data_preparation(config):
     

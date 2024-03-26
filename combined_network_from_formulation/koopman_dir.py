@@ -26,10 +26,19 @@ class EncoderDecoder(nn.Module):
     def forward(self, state, control, nu):
         state_encoded = self.state_encoder(state)
         control_encoded = self.control_encoder(control)
+
+        # print("state_encoded", state_encoded.shape)
+        # print("control_encoded", control_encoded.shape)
+
         K_state = self.state_matrix(nu)
         K_control = self.control_matrix(nu)
+
         state_transformed = torch.matmul(state_encoded, K_state)
         control_transformed = torch.matmul(control_encoded, K_control)
+
+        # print("state_transformed", state_transformed.shape)
+        # print("control_transformed", control_transformed.shape)
+
         state_predicted = self.state_decoder(state_transformed + control_transformed)
         return state_predicted
 
@@ -43,6 +52,14 @@ class EncoderDecoder(nn.Module):
 
     def forward_latent(self, state, control, nu):
         state_encoded = self.state_encoder(state)
+        control_encoded = self.control_encoder(control)
+        K_state = self.state_matrix(nu)
+        K_control = self.control_matrix(nu)
+        state_transformed = torch.matmul(state_encoded, K_state)
+        control_transformed = torch.matmul(control_encoded, K_control)
+        return state_transformed + control_transformed
+    
+    def forward_latent_to_latent(self, state_encoded, control, nu):
         control_encoded = self.control_encoder(control)
         K_state = self.state_matrix(nu)
         K_control = self.control_matrix(nu)
@@ -113,15 +130,15 @@ class StateMatrix_sum(nn.Module):
 
     def add_nu(self, nu_data):
         for nu_tensor in nu_data:
-            nu = str(nu_tensor.item())
+            nu = str(nu_tensor)
             if nu not in self.k_matrices:
                 self.k_matrices[nu] = nn.Parameter(torch.randn(self.k_size, self.k_size))
     
     def initialize_K(self):
-        self.k_matrices = nn.ModuleDict()
+        self.k_matrices = nn.ParameterDict()
 
     def forward(self, nu):
-        nu = str(nu.item())
+        nu = str(nu[0].item())
         if nu in self.k_matrices:
             return self.k_matrices[nu]
         else:
@@ -158,6 +175,7 @@ class StateMatrix_NN(nn.Module):
 class ControlEncoder(nn.Module):
     def __init__(self, params):
         super(ControlEncoder, self).__init__()
+        self.params = params
         self.input_layer = nn.Linear(params.u_dim, params.u_model)
         self.Layer = FeedForwardLayerConnection(params.u_model, FeedForward(params.u_model, params.u_model), params.dropout)
         self.layers = clones(self.Layer, params.N_Control)
@@ -170,7 +188,7 @@ class ControlEncoder(nn.Module):
             x = layer(x)
         x = self.norm(x)
         x = self.output_layer(x)
-        return x
+        return torch.reshape(x, (-1, 1, self.params.d_model))
 
 class StateEncoder(nn.Module):
     def __init__(self, params):
@@ -289,12 +307,30 @@ def attention(query, key, value, params, mask=None, dropout=None, alpha=None):
     p_attn = p_attn.to(torch.float32)
     return torch.matmul(p_attn, value), scores, p_attn
 
+
+
+
 def BuildModelFromParams(params):
     state_encoder = StateEncoder(params)
     control_encoder = ControlEncoder(params)
     state_matrix = StateMatrix_sum(params)
+    state_matrix.add_nu(params.nu_list)
     control_matrix = StateMatrix_sum(params)
+    control_matrix.add_nu(params.nu_list)
     state_decoder = StateDecoder(params)
     model = EncoderDecoder(state_encoder, state_decoder, control_encoder, state_matrix, control_matrix)
     return model
 
+class Params:
+    def __init__(self, x_dim, u_dim, config):
+        self.x_dim = x_dim
+        self.u_dim = u_dim
+        self.d_model = config['d_model']
+        self.d_ff = config['d_ff']
+        self.dropout = config['dropout']
+        self.N_State = config['N_State']
+        self.N_Control = config['N_Control']
+        self.attn_type = config['attn_type']
+        self.h = config['h']
+        self.nu_list = [config['nu']]
+        self.u_model = config['u_model']
