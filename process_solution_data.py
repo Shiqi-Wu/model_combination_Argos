@@ -70,40 +70,6 @@ def read_data_from_txt(file_path):
         data = [float(line.strip()) for line in lines[1:]]
     return time, data
 
-# def main(params):
-#     for suffix in range(1, 51):
-#         data_folder = os.path.join('..', '..', 'ArgosMOR', 'data', f'data-{suffix}.RawSolution')
-#         try:
-#             file_names = [os.path.join(data_folder, f) for f in os.listdir(data_folder) if f.startswith('Solution_') and f.endswith('.txt')]
-#         except FileNotFoundError:
-#             print(f"Directory {data_folder} not found.")
-#             continue
-
-#         file_names.sort(key=lambda x: int(x.split('_')[1].split('.')[0]))
-#         data_dict = {}
-
-#         if suffix <= 48:
-#             curr = params[suffix - 1]
-#             for i, file_name in enumerate(file_names):
-#                 time, data = read_data_from_txt(file_name)
-#                 I_p = 200 * np.sin(2 * np.pi * curr[0] * time) + 200 * np.cos(2 * np.pi * curr[1] * time)
-#                 data_dict[i] = {'time': time, 'data': data, 'I_p': I_p}
-
-#         elif suffix == 49:
-#             for i, file_name in enumerate(file_names):
-#                 time, data = read_data_from_txt(file_name)
-#                 I_p = 300 * np.sin(2 * np.pi * 50 * time)
-#                 data_dict[i] = {'time': time, 'data': data, 'I_p': I_p}
-
-#         elif suffix == 50:
-#             for i, file_name in enumerate(file_names):
-#                 time, data = read_data_from_txt(file_name)
-#                 I_p = 300 * np.cos(2 * np.pi * 50 * time)
-#                 data_dict[i] = {'time': time, 'data': data, 'I_p': I_p}
-
-#         np.save(f'data_dict_{suffix}.npy', data_dict)
-#         print(f"Data for suffix {suffix} has been saved as 'data_dict_{suffix}.npy' file.")
-
 
 if __name__ == '__main__':
     args = parse_args()

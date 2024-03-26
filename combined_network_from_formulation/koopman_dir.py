@@ -15,51 +15,59 @@ import warnings
 warnings.filterwarnings("ignore")
 
 class EncoderDecoder(nn.Module):
-    def __init__(self, state_encoder, state_decoder, control_encoder, state_transformer, control_transformer):
+    def __init__(self, state_encoder, state_decoder, control_encoder, state_matrix, control_matrix):
         super(EncoderDecoder, self).__init__()
         self.state_encoder = state_encoder
         self.state_decoder = state_decoder
         self.control_encoder = control_encoder
-        self.state_transformer = state_transformer
-        self.control_transformer = control_transformer
+        self.state_matrix = state_matrix
+        self.control_matrix = control_matrix
 
-    def forward(self, state, control):
+    def forward(self, state, control, nu):
         state_encoded = self.state_encoder(state)
         control_encoded = self.control_encoder(control)
-        state_transformed = self.state_transformer(state_encoded)
-        control_transformed = self.control_transformer(control_encoded)
-        state_decoded = self.state_decoder(state_transformed + control_transformed)
-        return state_decoded
+        K_state = self.state_matrix(nu)
+        K_control = self.control_matrix(nu)
+        state_transformed = torch.matmul(state_encoded, K_state)
+        control_transformed = torch.matmul(control_encoded, K_control)
+        state_predicted = self.state_decoder(state_transformed + control_transformed)
+        return state_predicted
 
     def encode_state(self, state):
         return self.state_encoder(state)
     
-    def encode_state_transformed(self, state, control):
+    def auto_state(self, state):
+        state_encoded = self.state_encoder(state)
+        state_auto = self.state_decoder(state_encoded)
+        return state_auto
+
+    def forward_latent(self, state, control, nu):
         state_encoded = self.state_encoder(state)
         control_encoded = self.control_encoder(control)
-        state_transformed = self.state_transformer(state_encoded)
-        control_transformed = self.control_transformer(control_encoded)
+        K_state = self.state_matrix(nu)
+        K_control = self.control_matrix(nu)
+        state_transformed = torch.matmul(state_encoded, K_state)
+        control_transformed = torch.matmul(control_encoded, K_control)
         return state_transformed + control_transformed
-    
-    def encode_decode_state(self, state):
-        state_encoded = self.state_encoder(state)
-        state_decoded = self.state_decoder(self.state_decoder(state_encoded))   
-        return state_decoded
+
+
 
 def clones(module, N):
     "Produce N identical layers."
     return nn.ModuleList([copy.deepcopy(module) for _ in range(N)])
 
-class Encoder(nn.Module):
-    def __init__(self, layer, N):
-        super(Encoder, self).__init__()
-        self.layers = clones(layer, N)
-        self.norm = LayerNorm(layer.size)
-        
+class LayerNorm(nn.Module):
+    "Construct a layernorm module (See citation for details)."
+    def __init__(self, features, eps=1e-6): 
+        super(LayerNorm, self).__init__()
+        self.a_2 = nn.Parameter(torch.ones(features))
+        self.b_2 = nn.Parameter(torch.zeros(features))
+        self.eps = eps
+
     def forward(self, x):
-        for layer in self.layers:
-            x = layer(x)
-        return self.norm(x)
+        mean = x.mean(-1, keepdim=True)
+        std = x.std(-1, keepdim=True)
+        return self.a_2 * (x - mean) / (std + self.eps) + self.b_2
     
 class SublayerConnection(nn.Module):
     """
@@ -75,19 +83,134 @@ class SublayerConnection(nn.Module):
         "Apply residual connection to any sublayer with the same size."
         return x + self.dropout(sublayer(self.norm(x)))
 
-class LayerNorm(nn.Module):
-    "Construct a layernorm module (See citation for details)."
-    def __init__(self, features, eps=1e-6): 
-        super(LayerNorm, self).__init__()
-        self.a_2 = nn.Parameter(torch.ones(features))
-        self.b_2 = nn.Parameter(torch.zeros(features))
-        self.eps = eps
-
+class FeedForward(nn.Module):
+    "Implements FFN equation."
+    def __init__(self, d_model, d_ff, dropout = 0.2): 
+        super(FeedForward, self).__init__()
+        self.w_1 = nn.Linear(d_model, d_ff)
+        self.w_2 = nn.Linear(d_ff, d_model)
+        self.dropout = nn.Dropout(dropout)
+        
     def forward(self, x):
-        mean = x.mean(-1, keepdim=True)
-        std = x.std(-1, keepdim=True)
-        return self.a_2 * (x - mean) / (std + self.eps) + self.b_2
+        return self.w_2(self.dropout(F.relu(self.w_1(x))))
+
+class FeedForwardLayerConnection(nn.Module):
+    def __init__(self, size, feed_forward, dropout):
+        super(FeedForwardLayerConnection, self).__init__()
+        self.feed_forward = feed_forward
+        self.sublayer = clones(SublayerConnection(size, dropout), 1)
+        self.size = size
     
+    def forward(self, x):
+        x = self.sublayer[0](x, lambda x: self.feed_forward(x))
+        return x
+    
+class StateMatrix_sum(nn.Module):
+    def __init__(self, params):
+        super(StateMatrix_sum, self).__init__()
+        self.k_size = params.d_model
+        self.initialize_K()
+
+    def add_nu(self, nu_data):
+        for nu_tensor in nu_data:
+            nu = str(nu_tensor.item())
+            if nu not in self.k_matrices:
+                self.k_matrices[nu] = nn.Parameter(torch.randn(self.k_size, self.k_size))
+    
+    def initialize_K(self):
+        self.k_matrices = nn.ModuleDict()
+
+    def forward(self, nu):
+        nu = str(nu.item())
+        if nu in self.k_matrices:
+            return self.k_matrices[nu]
+        else:
+            raise KeyError(f"nu value '{nu}' not found in k_layers.")
+
+    def forward_lambda(self, lbd):
+        if len(lbd) != len(self.k_matrices):
+            raise ValueError("Length of lambda does not match number of matrices in k_matrices.")
+
+        K_sum = torch.zeros((self.k_size, self.k_size))
+        for i, (k_matrix, lbd_i) in enumerate(zip(self.k_matrices, lbd)):
+            K_sum += lbd_i * k_matrix
+        return K_sum
+        
+
+class StateMatrix_NN(nn.Module):
+    def __init__(self, params):
+        super(StateMatrix_NN, self).__init__()
+        self.input_layer = nn.Linear(params.nu_dim, params.k_model)
+        self.MatrixLayer = FeedForwardLayerConnection(params.k_model, FeedForward(params.k_model, params.k_model), params.dropout)
+        self.layers = clones(FeedForwardLayerConnection, params.N_Koopman)
+        self.norm = LayerNorm(params.k_model)
+        self.output_layer = nn.Linear(params.k_model, params.d_model * params.d_model)
+    
+    def forward(self, nu):
+        x = F.relu(self.input_layer(nu))
+        for layer in self.layers:
+            x = layer(x)
+        x = self.norm(x)
+        x = self.output_layer(x)
+        x = x.reshape(-1, 1, self.params.d_model) 
+        return x
+
+class ControlEncoder(nn.Module):
+    def __init__(self, params):
+        super(ControlEncoder, self).__init__()
+        self.input_layer = nn.Linear(params.u_dim, params.u_model)
+        self.Layer = FeedForwardLayerConnection(params.u_model, FeedForward(params.u_model, params.u_model), params.dropout)
+        self.layers = clones(self.Layer, params.N_Control)
+        self.norm = LayerNorm(params.u_model)
+        self.output_layer = nn.Linear(params.u_model, params.d_model)
+    
+    def forward(self, control):
+        x = F.relu(self.input_layer(control))
+        for layer in self.layers:
+            x = layer(x)
+        x = self.norm(x)
+        x = self.output_layer(x)
+        return x
+
+class StateEncoder(nn.Module):
+    def __init__(self, params):
+        super(StateEncoder, self).__init__()
+        self.params = params
+        self.input_layer = nn.Linear(params.x_dim, params.d_model)
+        attn = MultiHeadedAttention(params)
+        ff = FeedForward(params.d_model, params.d_ff)
+        self.Layer = StateEncoderDecoderLayer(params.d_model, attn, ff, params.dropout)
+        self.layers = clones(self.Layer, params.N_State)
+        self.norm = LayerNorm(params.d_model)
+
+    def forward(self, state):
+        state = torch.reshape(state, (-1, 1, self.params.x_dim))
+        x = F.relu(self.input_layer(state))
+        for layer in self.layers:
+            x = layer(x)
+        return self.norm(x)
+    
+        
+class StateDecoder(nn.Module):
+    def __init__(self, params):
+        super(StateDecoder, self).__init__()
+        self.params = params
+        self.input_layer = nn.Linear(params.d_model, params.d_model)
+        attn = MultiHeadedAttention(params)
+        ff = FeedForward(params.d_model, params.d_ff)
+        self.Layer = StateEncoderDecoderLayer(params.d_model, attn, ff, params.dropout)
+        self.layers = clones(self.Layer, params.N_State)
+        self.norm = LayerNorm(params.d_model)
+        self.output_layer = nn.Linear(params.d_model, params.x_dim)
+    
+    def forward(self, state):
+        x = F.relu(self.input_layer(state))
+        for layer in self.layers:
+            x = layer(x)
+        x = self.norm(x)
+        x = self.output_layer(x)
+        return torch.reshape(x, (-1, self.params.x_dim))
+
 class StateEncoderDecoderLayer(nn.Module):
     "Encoder is made up of self-attn and feed forward"
     def __init__(self, size, self_attn, feed_forward, dropout):
@@ -100,30 +223,7 @@ class StateEncoderDecoderLayer(nn.Module):
     def forward(self, x):
         x = self.sublayer[0](x, lambda x: self.self_attn(x, x, x))
         return self.sublayer[1](x, self.feed_forward)
-    
-class ControlEncoderDecoderLayer(nn.Module):
-    "Encoder is made up of feed forward"
-    def __init__(self, size, feed_forward, dropout):
-        super(ControlEncoderDecoderLayer, self).__init__()
-        self.feed_forward = feed_forward
-        self.sublayer = clones(SublayerConnection(size, dropout), 1)
-        self.size = size
-    
-    def forward(self, x):
-        x = self.sublayer[0](x, lambda x: self.feed_forward(x))
-        return x
 
-class MatrixLayer(nn.Module):
-    def __init__(self, size, feed_forward, dropout):
-        super(MatrixLayer, self).__init__()
-        self.feed_forward = feed_forward
-        self.sublayer = clones(SublayerConnection(size, dropout), 1)
-        self.size = size
-    
-    def forward(self, x):
-        x = self.sublayer[0](x, lambda x: self.feed_forward(x))
-        return x
-    
 class MultiHeadedAttention(nn.Module):
     def __init__(self, params, dropout=0.2):  # TODO : h , dropout
         "Take in model size and number of heads." 
@@ -162,16 +262,6 @@ class MultiHeadedAttention(nn.Module):
              .view(nbatches, -1, self.h * self.d_k)
         return self.linears[-1](x)
     
-class FeedForward(nn.Module):
-    "Implements FFN equation."
-    def __init__(self, params): 
-        super(FeedForward, self).__init__()
-        self.w_1 = nn.Linear(params.d_model, params.d_ff)
-        self.w_2 = nn.Linear(params.d_ff, params.d_model)
-        self.dropout = nn.Dropout(params.dropout)
-        
-    def forward(self, x):
-        return self.w_2(self.dropout(F.relu(self.w_1(x))))
     
 def attention(query, key, value, params, mask=None, dropout=None, alpha=None):
     "Compute 'Scaled Dot Product Attention'"
@@ -199,15 +289,12 @@ def attention(query, key, value, params, mask=None, dropout=None, alpha=None):
     p_attn = p_attn.to(torch.float32)
     return torch.matmul(p_attn, value), scores, p_attn
 
-class KoopmanMatrixNN(nn.Module):
-    def __init__(self, params):
-        super(KoopmanMatrixNN, self).__init__()
-        self.layers = clones(MatrixLayer(params.k_model, FeedForward(params), params.N_Koopman))
-        self.norm = LayerNorm(params.k_model)
-        self.output_layer = nn.Linear(params.k_model, params.d_model)
-        
-    def forward(self, x):
-        for layer in self.layers:
-            x = layer(x)
-        
-        return self.norm(x)
+def BuildModelFromParams(params):
+    state_encoder = StateEncoder(params)
+    control_encoder = ControlEncoder(params)
+    state_matrix = StateMatrix_sum(params)
+    control_matrix = StateMatrix_sum(params)
+    state_decoder = StateDecoder(params)
+    model = EncoderDecoder(state_encoder, state_decoder, control_encoder, state_matrix, control_matrix)
+    return model
+

@@ -51,6 +51,8 @@ def build_dataset_list(config):
 
     return x_dataset, y_dataset, u1_dataset, u2_dataset
 
+def data_preparation_koopman(config):
+    
 
 def data_preparation(config):
     
